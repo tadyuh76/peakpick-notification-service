@@ -145,7 +145,13 @@ async def health(request: Request) -> dict[str, object]:
 
 
 @app.get("/notifications")
-async def list_notifications() -> list[dict[str, object]]:
-    if _database_enabled():
-        return await _notifications_from_event_log()
-    return notifications
+async def list_notifications(
+    order_id: str | None = None,
+    channel: str | None = None,
+) -> list[dict[str, object]]:
+    items = await _notifications_from_event_log() if _database_enabled() else notifications
+    if order_id:
+        items = [item for item in items if item["order_id"] == order_id]
+    if channel:
+        items = [item for item in items if item["channel"] == channel]
+    return items
