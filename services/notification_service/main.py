@@ -8,8 +8,9 @@ from fastapi import FastAPI, Request
 
 from shared.event_bus import build_event_bus
 from shared.events import EventEnvelope, EventType
-from shared.logging import configure_logging, log_event
+from shared.logging import configure_logging, install_api_logging, log_event
 from shared.settings import get_settings
+from shared.tenancy import DEFAULT_STORE_ID, store_id_from_request
 
 
 settings = get_settings("notification-service")
@@ -49,23 +50,24 @@ def _notification_from_event_row(row: dict[str, object]) -> dict[str, object] | 
     return None
 
 
-async def _notifications_from_event_log() -> list[dict[str, object]]:
-    return await asyncio.to_thread(_notifications_from_event_log_sync)
+async def _notifications_from_event_log(store_id: str = DEFAULT_STORE_ID) -> list[dict[str, object]]:
+    return await asyncio.to_thread(_notifications_from_event_log_sync, store_id)
 
 
-def _notifications_from_event_log_sync() -> list[dict[str, object]]:
+def _notifications_from_event_log_sync(store_id: str) -> list[dict[str, object]]:
     import psycopg
     from psycopg.rows import dict_row
 
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         rows = conn.execute(
             """
-            SELECT event_type, aggregate_id, payload, occurred_at
+            SELECT event_type, aggregate_id, store_id, payload, occurred_at
             FROM event_log
-            WHERE event_type IN (%s, %s)
+            WHERE store_id = %s
+              AND event_type IN (%s, %s)
             ORDER BY occurred_at ASC, created_at ASC
             """,
-            (EventType.NOTIFICATION_REQUESTED, EventType.INVENTORY_SHORTAGE_DETECTED),
+            (store_id, EventType.NOTIFICATION_REQUESTED, EventType.INVENTORY_SHORTAGE_DETECTED),
         ).fetchall()
 
     return [
@@ -133,6 +135,7 @@ app = FastAPI(
     description="Simulated ready, delay, and shortage notifications.",
     lifespan=lifespan,
 )
+install_api_logging(app, logger, settings.service_name)
 
 
 @app.get("/health")
@@ -146,10 +149,12 @@ async def health(request: Request) -> dict[str, object]:
 
 @app.get("/notifications")
 async def list_notifications(
+    request: Request,
     order_id: str | None = None,
     channel: str | None = None,
 ) -> list[dict[str, object]]:
-    items = await _notifications_from_event_log() if _database_enabled() else notifications
+    store_id = store_id_from_request(request)
+    items = await _notifications_from_event_log(store_id) if _database_enabled() else notifications
     if order_id:
         items = [item for item in items if item["order_id"] == order_id]
     if channel:
