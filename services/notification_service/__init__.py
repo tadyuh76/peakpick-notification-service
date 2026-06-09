@@ -1,2 +1,1 @@
-"""Notification service."""
-
+"""Dịch vụ Notification."""
