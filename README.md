@@ -1,12 +1,23 @@
 # PeakPick Notification Service
 
-Owns notification read models for ready-order and shortage messages.
+Notification Service là microservice mô phỏng thông báo cho khách khi đơn sẵn sàng hoặc có vấn đề thiếu hàng.
 
-Owned database tables:
+## Database Riêng
 
-- local `event_log`
+Service này sở hữu database `peakpick_notification` với bảng:
 
-Run locally:
+- `event_log`
+
+Notification trong bài là read model demo, chưa tích hợp SMS/email thật.
+
+## Event
+
+Nhận event:
+
+- `NotificationRequested`
+- `InventoryShortageDetected`
+
+## Chạy Local
 
 ```bash
 pip install -r requirements.txt
